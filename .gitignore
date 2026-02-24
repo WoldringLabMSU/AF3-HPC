@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environments
+.env
+venv/
+.conda/
+
+# HPC / SLURM
+*.out
+*.err
+*.log
+*.sbatch
+slurm-*
+
+# Model files
+*.pt
+*.pth
+*.ckpt
+*.pkl
+*.safetensors
+
+# Notebooks
+.ipynb_checkpoints/
+
+# System
+.DS_Store
