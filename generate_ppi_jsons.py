@@ -64,7 +64,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_sequences(csv_path: str) -> tuple[list[str], list[str]]:
+def load_sequences(csv_path: str) -> "tuple[list[str], list[str]]":
     """Return (binders, targets) lists from the CSV, skipping blank entries."""
     with open(csv_path, newline="") as f:
         reader = csv.DictReader(f)
