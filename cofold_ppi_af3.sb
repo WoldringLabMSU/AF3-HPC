@@ -18,7 +18,7 @@ module load Singularity  # uncomment if needed on your cluster
 
 export AF3_PERSONAL_DIR=/mnt/home/woldring/AF3-HPC
 export AF3_RESOURCES_DIR=/mnt/research/woldring_lab/AlphaFold3
-export AF3_SCRATCH_DIR=/mnt/scratch/woldring/af3
+export AF3_SCRATCH_DIR=/mnt/home/woldring/AF3-HPC
 
 AF3_JSON_TMPLT="${AF3_PERSONAL_DIR}/AF3_PPI.json"
 RUN_LABEL="ppi_ABY_run"  ##### CHANGE ME to a descriptive label for this run
