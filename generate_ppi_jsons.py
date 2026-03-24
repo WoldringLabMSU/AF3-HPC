@@ -32,7 +32,7 @@ import zlib
 MAX_SEED = 2_147_483_647
 
 
-def generate_seeds(job_tag: str, n_seeds: int) -> list[int]:
+def generate_seeds(job_tag: str, n_seeds: int) -> "list[int]":
     """Generate deterministic model seeds from a job tag via CRC32."""
     base_seed = (zlib.crc32(job_tag.encode("utf-8")) % (MAX_SEED - 1)) + 1
     seeds = []
