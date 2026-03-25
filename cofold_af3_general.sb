@@ -12,7 +12,7 @@
 set -euo pipefail
 
 module purge
-# module load Singularity  # uncomment if needed on your cluster
+module load Apptainer  # Singularity successor on ICER; check with: module spider apptainer
 
 export AF3_PERSONAL_DIR=/mnt/research/woldring_lab/Members/Patimar/AF3
 export AF3_RESOURCES_DIR=/mnt/research/woldring_lab/AlphaFold3
