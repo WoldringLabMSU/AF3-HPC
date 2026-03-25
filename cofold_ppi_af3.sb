@@ -30,7 +30,7 @@ export AF3_OUTPUT_DIR="${AF3_SCRATCH_DIR}/outputs/${RUN_LABEL}"
 export AF3_MODEL_PARAMETERS="${AF3_RESOURCES_DIR}/weights"
 export AF3_DATABASES_DIR=/mnt/research/common-data/alphafold/database_3
 
-CSV_PATH='/path/to/your/ppi.csv'  ##### CHANGE ME --> CSV with 'binders' and 'targets' columns
+CSV_PATH='/mnt/home/woldring/AF3-HPC/af3_inputs.csv'
 
 
 mkdir -p "${AF3_INPUT_DIR}" "${AF3_OUTPUT_DIR}" "${AF3_SCRATCH_DIR}/logs" "${AF3_SCRATCH_DIR}/tmp"
