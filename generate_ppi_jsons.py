@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         help="Path to AF3_PPI.json template (default: AF3_PPI.json next to this script)",
     )
     parser.add_argument("--outdir", required=True, help="Directory to write JSON files into")
-    parser.add_argument("--num-seeds", type=int, default=20, help="Number of model seeds per job (default: 20)")
+    parser.add_argument("--num-seeds", type=int, default=1, help="Number of model seeds per job (default: 1)")
     parser.add_argument(
         "--skip-existing",
         action="store_true",

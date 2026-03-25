@@ -36,7 +36,7 @@ CSV_PATH='/path/to/your/ppi.csv'  ##### CHANGE ME --> CSV with 'binders' and 'ta
 mkdir -p "${AF3_INPUT_DIR}" "${AF3_OUTPUT_DIR}" "${AF3_SCRATCH_DIR}/logs" "${AF3_SCRATCH_DIR}/tmp"
 
 # Total structures per complex is AF3_NUM_SEEDS times AF3_NUM_SAMPLES_PER_SEED
-AF3_NUM_SEEDS="${AF3_NUM_SEEDS:-20}"
+AF3_NUM_SEEDS="${AF3_NUM_SEEDS:-1}"
 AF3_NUM_SAMPLES_PER_SEED="${AF3_NUM_SAMPLES_PER_SEED:-5}"
 
 # ---- sanity checks ----
