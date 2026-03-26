@@ -266,8 +266,8 @@ if run_af3; then
   exit 0
 fi
 
-if grep -q "KeyError: 'AAA'" "${AF3_STDERR}"; then
-  echo "==> [${job_tag}] Detected KeyError 'AAA' during template parsing. Retrying with patched templates.py."
+if grep -q "templates.py" "${AF3_STDERR}" && grep -q "KeyError:" "${AF3_STDERR}"; then
+  echo "==> [${job_tag}] Detected KeyError in templates.py during template parsing. Retrying with patched templates.py."
   bind_arg="$(make_patched_templates_bind)"
   run_af3 "${bind_arg}"
   exit $?
