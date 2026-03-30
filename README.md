@@ -122,7 +122,7 @@ AF3_NUM_SAMPLES_PER_SEED=5
 Submit the job with:
 
 ```
-sbatch run_af3.sh
+sbatch cofold_af3_general.sh
 ```
 
 ---
