@@ -1,14 +1,26 @@
+"""
+Date: March 2026
+Description: Organization of outputs from an AF3 SLURM job run. Extracts the structural files and json confidence scores.
+Then stores them in a fresh directory that includes the name of the ligand and a number. Then stores them in another directory
+with the ligand name. Repeats until all outputs have been processed.
+"""
 import shutil
 from pathlib import Path
 
 
-root = Path("/mnt/scratch/patimara/AF3/outputs")
-out_root = Path("/mnt/research/woldring_lab/Members/Patimar/standardized_names/AF3")
+# CHANGE ME!!!
+root = Path(config["data_path"]) # the path to your desired directory where outputs are located 
+out_root = Path(config["out_path"]) # the path you want your NEW outputs to go in
 
+# TRUE: if you want to see the EXPECTED output printed in the terminal but not officially run the code
+# FALSE: if you want to run the script fully
 DRY_RUN = False
 
-paths = root.glob("1b3_partially_overlapping_af3/*/*/seed-*")
+# CHANGE ME!!! Only change the first line in the path to the directory that comes right after your current path in 'root'
+# e.g. 1b3_completely_overlapping
+paths = root.glob("<CHANGE_ME>/*/*/seed-*")
 
+# to count number of poses: 20 seeds x 5 runs for each = 100 poses for each ligand
 global_num = 1
 
 for i, p in enumerate(sorted(paths)):

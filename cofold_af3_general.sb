@@ -9,17 +9,25 @@
 #SBATCH --error=/mnt/research/woldring_lab/Members/Patimar/AF3/logs/%x_%A_%a.err
 #SBATCH --array=1-134%10
 
+# SEMI-OPTIONAL CHANGE FOR THE ABOVE RESOURCE SETUP!!! Please make sure to redirect your outputs/error logs to your preferred directory. 
+# Otherwise the output of your runs will end up in my directory :D
+
 set -euo pipefail
 
 module purge
 # module load Singularity  # uncomment if needed on your cluster
 
+# CHANGE ME!!! Change based on the names of your personal working directories
 export AF3_PERSONAL_DIR=/mnt/research/woldring_lab/Members/Patimar/AF3
 export AF3_RESOURCES_DIR=/mnt/research/woldring_lab/AlphaFold3
 export AF3_SCRATCH_DIR=/mnt/scratch/patimara/AF3
 
 AF3_JSON_TMPLT="${AF3_PERSONAL_DIR}/AF3.json"
-RUN_LABEL="2b1_noninhibitors_af3"
+
+# CHANGE ME BEFORE RUNNING!!! 
+# This is an output label for your run. You choose the name based on your preferences :)
+# e.g. 1b1_noninhibitors_af3
+RUN_LABEL="<CHOOSE_AN_OUTPUT_LABEL>"
 
 export AF3_IMAGE="${AF3_RESOURCES_DIR}/image/alphafold3.sif"
 export AF3_CODE_DIR="${AF3_RESOURCES_DIR}/code"
@@ -28,7 +36,11 @@ export AF3_OUTPUT_DIR="${AF3_SCRATCH_DIR}/outputs/${RUN_LABEL}"
 export AF3_MODEL_PARAMETERS="${AF3_RESOURCES_DIR}/weights"
 export AF3_DATABASES_DIR=/mnt/research/common-data/alphafold/database_3
 
-CSV_PATH='/mnt/research/woldring_lab/Members/Patimar/AF3/2b1_smiles_noninhibitors.csv' ##### CHANGE ME to your own input csv w same format --> cols pdb_id,smiles,sequence :)
+# CHANGE BEFORE RUNNING!!! 
+# <A_PROTEIN_DIRECTORY> -> 1b1, 1b3, or 2b1 (One of the exsiting protein dataset directories)
+# <A_CSV_FILE_IN_THE_PROTEIN_DIRECTORY> -> choose and write the name of one of the csv files in 
+# the previous protein directory that you wrote (e.g. 1b1_smiles_noninhibitors.csv)
+CSV_PATH='/mnt/research/woldring_lab/Members/Patimar/AF3/<A_PROTIEN_DIRECTORY>/<A_CSV_FILE_IN_THE_PROTEIN_DIRECTORY>'
 
 
 mkdir -p "${AF3_INPUT_DIR}" "${AF3_OUTPUT_DIR}" "${AF3_SCRATCH_DIR}/logs" "${AF3_SCRATCH_DIR}/tmp"
