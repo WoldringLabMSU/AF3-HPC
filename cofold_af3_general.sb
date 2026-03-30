@@ -1,13 +1,13 @@
 #!/bin/bash --login
 #SBATCH --job-name=af3
 #SBATCH --time=05:00:00
-#SBATCH --gpus=1
+#SBATCH --gpus=a100:1
 # #SBATCH --constraint=nal
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96G
 #SBATCH --output=/mnt/research/woldring_lab/Members/Patimar/AF3/logs/%x_%A_%a.out
 #SBATCH --error=/mnt/research/woldring_lab/Members/Patimar/AF3/logs/%x_%A_%a.err
-#SBATCH --array=41-134%10
+#SBATCH --array=1-134%10
 
 set -euo pipefail
 
@@ -19,7 +19,7 @@ export AF3_RESOURCES_DIR=/mnt/research/woldring_lab/AlphaFold3
 export AF3_SCRATCH_DIR=/mnt/scratch/patimara/AF3
 
 AF3_JSON_TMPLT="${AF3_PERSONAL_DIR}/AF3.json"
-RUN_LABEL="1b3_noninhibitors_af3"
+RUN_LABEL="2b1_noninhibitors_af3"
 
 export AF3_IMAGE="${AF3_RESOURCES_DIR}/image/alphafold3.sif"
 export AF3_CODE_DIR="${AF3_RESOURCES_DIR}/code"
@@ -28,7 +28,7 @@ export AF3_OUTPUT_DIR="${AF3_SCRATCH_DIR}/outputs/${RUN_LABEL}"
 export AF3_MODEL_PARAMETERS="${AF3_RESOURCES_DIR}/weights"
 export AF3_DATABASES_DIR=/mnt/research/common-data/alphafold/database_3
 
-CSV_PATH='/mnt/research/woldring_lab/Members/Patimar/AF3/smiles_seqs_noninhibitors_134poses.csv' ##### CHANGE ME to your own input csv w same format --> cols pdb_id,smiles,sequence :)
+CSV_PATH='/mnt/research/woldring_lab/Members/Patimar/AF3/2b1_smiles_noninhibitors.csv' ##### CHANGE ME to your own input csv w same format --> cols pdb_id,smiles,sequence :)
 
 
 mkdir -p "${AF3_INPUT_DIR}" "${AF3_OUTPUT_DIR}" "${AF3_SCRATCH_DIR}/logs" "${AF3_SCRATCH_DIR}/tmp"
