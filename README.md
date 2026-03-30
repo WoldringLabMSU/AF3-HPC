@@ -17,7 +17,7 @@ The script automatically:
 
 Each SLURM array task:
 
-1. Reads one row from the CSV
+1. Reads one row from the CSV (pdb_id,smiles,sequence,ligand)
 2. Generates a JSON input file
 3. Runs AlphaFold3
 4. Saves predictions and logs
@@ -31,6 +31,7 @@ Default:
 ```
 20 seeds * 5 samples = 100 structures per complex
 ```
+You can change this number based on your preference.
 
 ---
 
@@ -63,12 +64,6 @@ AF3_IMAGE            AlphaFold3 container image
 AF3_CODE_DIR         AlphaFold3 code directory
 AF3_MODEL_PARAMETERS model weights
 AF3_DATABASES_DIR    AF3 sequence + structure databases
-```
-
-Example from the script:
-
-```
-AF3_RESOURCES_DIR=/mnt/research/woldring_lab/AlphaFold3
 ```
 
 ---
@@ -135,12 +130,12 @@ sbatch run_af3.sh
 The script uses a **SLURM job array**:
 
 ```
-#SBATCH --array=41-134%10
+#SBATCH --array=1-100%10
 ```
 
 Meaning:
 
-- tasks **41–134** from the CSV
+- tasks **1-100** from the CSV
 - **10 jobs run simultaneously**
 
 Modify this range depending on your dataset.
