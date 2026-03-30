@@ -21,16 +21,16 @@ export AF3_RESOURCES_DIR=/mnt/research/woldring_lab/AlphaFold3
 export AF3_SCRATCH_DIR=/mnt/scratch/woldring/af3
 
 AF3_JSON_TMPLT="${AF3_PERSONAL_DIR}/AF3_PPI.json"
-RUN_LABEL="ppi_ABY_run"  ##### CHANGE ME to a descriptive label for this run
+RUN_LABEL="ppi_rfd3_run"  ##### CHANGE ME to a descriptive label for this run
 
 export AF3_IMAGE="${AF3_RESOURCES_DIR}/image/alphafold3.sif"
 export AF3_CODE_DIR="${AF3_RESOURCES_DIR}/code"
-export AF3_INPUT_DIR="${AF3_SCRATCH_DIR}/inputs"
+export AF3_INPUT_DIR="${AF3_SCRATCH_DIR}/inputs/${RUN_LABEL}"
 export AF3_OUTPUT_DIR="${AF3_SCRATCH_DIR}/outputs/${RUN_LABEL}"
 export AF3_MODEL_PARAMETERS="${AF3_RESOURCES_DIR}/weights"
 export AF3_DATABASES_DIR=/mnt/research/common-data/alphafold/database_3
 
-CSV_PATH='/mnt/home/woldring/AF3-HPC/af3_inputs.csv'
+CSV_PATH='/mnt/home/woldring/AF3-HPC/af3_inputs_from_rfd3.csv'
 
 
 mkdir -p "${AF3_INPUT_DIR}" "${AF3_OUTPUT_DIR}" "${AF3_SCRATCH_DIR}/logs" "${AF3_SCRATCH_DIR}/tmp"
