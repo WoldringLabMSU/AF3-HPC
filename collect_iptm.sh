@@ -7,7 +7,7 @@
 #
 # If no output file is given, writes to stdout.
 
-BASE_DIR="/mnt/scratch/woldring/af3/outputs/ppi_rfd3_run"
+BASE_DIR="/mnt/scratch/woldring/af3/outputs/ppi_aby_plexind1_run"
 OUTPUT="${1:-/dev/stdout}"
 
 echo "job_tag,iptm" > "${OUTPUT}"
