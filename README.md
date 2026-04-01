@@ -123,6 +123,38 @@ python3 generate_ppi_jsons.py \
     [--num-seeds 20] \
     [--skip-existing]
 ```
+If instead of an ***M x N all-vs-all matrix*** you need to generate jsons based on ***row-wise pairings*** of binder-target pairs, run:
+
+```
+python generate_ppi_jsons_rowwise.py \
+  --csv ppi_rowwise.csv \
+  --outdir /path/to/af3/inputs \
+  --template AF3_PPI.json \
+  --num-seeds 1
+```
+
+which does ***NOT*** generate all-vs-all combinations, and ***DOES*** processes CSV row by row, assigns a binder ID and target ID based on the first time each unique binder/target sequence appears. Thus, for a input csv such as:
+
+```
+binders,targets
+MAASEQA...,MAASEQB...
+MAASEQA...,MAASEQC...
+MAASEQA...,MAASEQD...
+MAASEQE...,MAASEQB
+MAASEQE...,MAASEQD
+...
+```
+
+You will generate binder-target pair jsons per row such as:
+
+```
+binder1_target1
+binder1_target2
+binder1_target3
+binder2_target1
+binder2_target3
+...
+```
 
 ### Arguments
 
@@ -133,6 +165,11 @@ python3 generate_ppi_jsons.py \
 | `--template` | No | Path to `AF3_PPI.json` (default: next to the script) |
 | `--num-seeds` | No | Number of model seeds per job (default: 20) |
 | `--skip-existing` | No | Skip writing a JSON if the file already exists |
+| `--mapping-csv` | No | ***Only for generate_ppi_jsons_rowwise.py***: report to assess numbering is correct as expected |
+
+```--mapping-csv``` csv output will show source row, job tag, binder ID, target ID, binder sequence, target sequence.
+
+***row-wise pairing*** will overwrite duplicate rows if applicable.
 
 The script prints the correct `--array` range to use in the next step:
 
