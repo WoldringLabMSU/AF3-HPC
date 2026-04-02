@@ -207,6 +207,12 @@ Then submit:
 sbatch cofold_ppi_af3.sb
 ```
 
+For a row-wise binder-target pairing run use:
+
+```bash
+sbatch cofold_ppi_af3_rowwise.sb
+```
+
 ## Output
 
 Each binder-target pair produces a directory:
