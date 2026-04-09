@@ -1,0 +1,190 @@
+#!/bin/bash --login
+# =============================================================================
+# af3_data_pipeline.sb  --  Stage 1: CPU-only MSA + template search
+# =============================================================================
+# Runs AlphaFold 3 with --run_inference=false on one protein JSON per task.
+# No GPU is needed.  Run generate_af3_jsons.py --stage protein first to
+# produce the protein JSONs and oatp_json_list.txt.
+#
+# After all tasks finish, run:
+#   python generate_af3_jsons.py --stage pairs --csv_paths ...
+# to create the OATP-ligand pair JSONs, then submit af3_inference.sb.
+# =============================================================================
+#SBATCH --job-name=af3_oatp_dp
+#SBATCH --time=12:00:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=32          # AF3 searches 4 genetic databases in parallel
+#SBATCH --mem=128G                  # MSA search is memory-hungry
+#SBATCH --array=1-3                 # CHANGE: one task per unique OATP protein
+#SBATCH --output=/mnt/scratch/woldring/af3/logs/%x_%A_%a.out
+#SBATCH --error=/mnt/scratch/woldring/af3/logs/%x_%A_%a.err
+
+set -euo pipefail
+
+module purge
+# module load Singularity   # uncomment if required on your cluster
+
+# ---------------------------------------------------------------------------
+# Paths  (edit if your layout differs)
+# ---------------------------------------------------------------------------
+export AF3_RESOURCES_DIR=/mnt/research/woldring_lab/AlphaFold3
+export AF3_SCRATCH_DIR=/mnt/scratch/woldring/af3
+
+export AF3_IMAGE="${AF3_RESOURCES_DIR}/image/alphafold3.sif"
+export AF3_CODE_DIR="${AF3_RESOURCES_DIR}/code"
+export AF3_MODEL_PARAMETERS="${AF3_RESOURCES_DIR}/weights"
+export AF3_DATABASES_DIR=/mnt/research/common-data/alphafold/database_3
+
+# Where generate_af3_jsons.py --stage protein wrote the list and JSONs
+PROTEIN_JSON_LIST=/mnt/research/woldring_lab/af3/oatp_json_list.txt
+PROTEIN_JSON_DIR=/mnt/research/woldring_lab/af3/oatp_protein_jsons
+
+# Where AF3 will write the augmented JSONs (MSA + templates filled in)
+AF3_OUTPUT_DIR="${AF3_SCRATCH_DIR}/precomputed_oatps"
+
+# ---------------------------------------------------------------------------
+# Sanity checks
+# ---------------------------------------------------------------------------
+[[ -f "${PROTEIN_JSON_LIST}" ]] || { echo "ERROR: list not found: ${PROTEIN_JSON_LIST}" >&2; exit 1; }
+[[ -f "${AF3_IMAGE}" ]]         || { echo "ERROR: AF3 image not found: ${AF3_IMAGE}" >&2; exit 1; }
+[[ -d "${AF3_CODE_DIR}" ]]      || { echo "ERROR: AF3 code dir not found: ${AF3_CODE_DIR}" >&2; exit 1; }
+[[ -d "${AF3_MODEL_PARAMETERS}" ]] || { echo "ERROR: Model parameters not found: ${AF3_MODEL_PARAMETERS}" >&2; exit 1; }
+[[ -d "${AF3_DATABASES_DIR}" ]] || { echo "ERROR: Databases dir not found: ${AF3_DATABASES_DIR}" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Resolve this task's JSON
+# ---------------------------------------------------------------------------
+JSON_PATH="$(sed -n "${SLURM_ARRAY_TASK_ID}p" "${PROTEIN_JSON_LIST}")"
+[[ -n "${JSON_PATH}" ]] || { echo "ERROR: no line ${SLURM_ARRAY_TASK_ID} in ${PROTEIN_JSON_LIST}" >&2; exit 1; }
+[[ -f "${JSON_PATH}" ]] || { echo "ERROR: JSON not found: ${JSON_PATH}" >&2; exit 1; }
+
+json_name="$(basename "${JSON_PATH}")"
+job_name="${json_name%.json}"          # e.g. "1b1"
+
+echo "==> [task ${SLURM_ARRAY_TASK_ID}] protein=${job_name}"
+echo "==> input JSON: ${JSON_PATH}"
+
+# ---------------------------------------------------------------------------
+# Skip if precomputed output already exists
+# ---------------------------------------------------------------------------
+out_host="${AF3_OUTPUT_DIR}/${job_name}"
+if [[ -f "${out_host}/${job_name}.json" ]]; then
+    echo "==> precomputed JSON already exists at ${out_host}/${job_name}.json -- skipping"
+    exit 0
+fi
+
+mkdir -p "${out_host}" "${AF3_SCRATCH_DIR}/logs"
+
+# Per-job tmp dir on scratch (fast local I/O for JAX/XLA cache)
+AF3_TMP_HOST="${AF3_SCRATCH_DIR}/tmp/${job_name}_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+mkdir -p "${AF3_TMP_HOST}"
+
+AF3_STDOUT="${out_host}/af3.stdout.log"
+AF3_STDERR="${out_host}/af3.stderr.log"
+: > "${AF3_STDOUT}"
+: > "${AF3_STDERR}"
+
+# ---------------------------------------------------------------------------
+# Helper: patch templates.py to skip KeyError 'AAA' template hits
+# (same approach as cofold_af3_general.sb)
+# ---------------------------------------------------------------------------
+make_patched_templates_bind() {
+    local patch_dir="${AF3_TMP_HOST}/patch"
+    mkdir -p "${patch_dir}"
+
+    local container_tpl='/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/templates.py'
+    local host_tpl="${patch_dir}/templates.py"
+
+    singularity exec "${AF3_IMAGE}" /bin/bash -lc "cat ${container_tpl}" > "${host_tpl}"
+
+    python3 - "${host_tpl}" <<'PY'
+import sys, re
+
+path = sys.argv[1]
+txt  = open(path, encoding='utf-8', errors='replace').read()
+
+if 'AF3_SKIP_KEYERROR_PATCH' in txt:
+    sys.exit(0)
+
+pat = re.compile(r'^(?P<indent>\s*)release_date,\s*sequence,\s*unresolved_res_ids\s*=\s*_parse_hit_metadata\(', re.M)
+m   = pat.search(txt)
+if not m:
+    raise SystemExit('Could not find _parse_hit_metadata assignment to patch')
+
+indent     = m.group('indent')
+start_line = txt.rfind('\n', 0, m.start()) + 1
+open_pos   = txt.find('_parse_hit_metadata(', m.start())
+open_paren = txt.find('(', open_pos)
+depth, close_pos, i = 0, None, open_paren
+while i < len(txt):
+    if txt[i] == '(':  depth += 1
+    elif txt[i] == ')':
+        depth -= 1
+        if depth == 0: close_pos = i; break
+    i += 1
+if close_pos is None:
+    raise SystemExit('Could not balance parentheses for _parse_hit_metadata call')
+
+seg_end = txt.find('\n', close_pos)
+seg_end = len(txt) if seg_end == -1 else seg_end + 1
+segment = txt[start_line:seg_end]
+indented = ''.join('    ' + ln for ln in segment.splitlines(True))
+
+replacement = (
+    f"{indent}# AF3_SKIP_KEYERROR_PATCH\n"
+    f"{indent}try:\n"
+    f"{indented}"
+    f"{indent}except KeyError:\n"
+    f"{indent}    continue\n"
+)
+open(path, 'w', encoding='utf-8').write(txt[:start_line] + replacement + txt[seg_end:])
+PY
+
+    echo "--bind ${host_tpl}:${container_tpl}"
+}
+
+# ---------------------------------------------------------------------------
+# Run AF3 data pipeline (--run_inference=false)
+# ---------------------------------------------------------------------------
+run_data_pipeline() {
+    local extra_bind="${1:-}"
+
+    set +e
+    singularity exec \
+        --bind "${PROTEIN_JSON_DIR}:/root/af_input" \
+        --bind "${AF3_OUTPUT_DIR}:/root/af_output" \
+        --bind "${AF3_MODEL_PARAMETERS}:/root/models" \
+        --bind "${AF3_DATABASES_DIR}:/root/public_databases" \
+        --bind "${AF3_CODE_DIR}:/root/af_code" \
+        --bind "${AF3_TMP_HOST}:/tmp/local" \
+        --env TMPDIR=/tmp/local \
+        ${extra_bind} \
+        "${AF3_IMAGE}" \
+        python3 /root/af_code/alphafold3/run_alphafold.py \
+            --json_path    "/root/af_input/${json_name}" \
+            --model_dir    /root/models \
+            --db_dir       /root/public_databases \
+            --output_dir   "/root/af_output/${job_name}" \
+            --run_inference=false \
+        > >(tee -a "${AF3_STDOUT}") \
+        2> >(tee -a "${AF3_STDERR}" >&2)
+    local status=$?
+    set -e
+    return "${status}"
+}
+
+echo "==> running AF3 data pipeline (MSA + template search) for ${job_name}"
+if run_data_pipeline; then
+    echo "==> [${job_name}] data pipeline complete"
+    exit 0
+fi
+
+# Retry with patched templates.py if the AAA KeyError occurs
+if grep -q "KeyError: 'AAA'" "${AF3_STDERR}"; then
+    echo "==> [${job_name}] KeyError 'AAA' detected; retrying with patched templates.py"
+    bind_arg="$(make_patched_templates_bind)"
+    run_data_pipeline "${bind_arg}"
+    exit $?
+fi
+
+exit 1

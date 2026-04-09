@@ -1,0 +1,150 @@
+#!/bin/bash --login
+# =============================================================================
+# af3_inference.sb  --  Stage 2: GPU inference on OATP-ligand pairs
+# =============================================================================
+# Runs AlphaFold 3 with --run_data_pipeline=false on one protein+ligand pair
+# JSON per task.  The protein entry in each JSON already contains the
+# precomputed unpairedMsa, pairedMsa, and templates from af3_data_pipeline.sb.
+#
+# Run generate_af3_jsons.py --stage pairs first to produce the pair JSONs
+# and pair_json_list.txt, then submit this script.
+# =============================================================================
+#SBATCH --job-name=af3_oatp_inf
+#SBATCH --time=04:00:00
+#SBATCH --gpus=a100:1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
+#SBATCH --array=1-100%25            # CHANGE: set upper bound to total pair count;
+                                    # %25 limits concurrent jobs (tune to GPU quota)
+#SBATCH --output=/mnt/scratch/woldring/af3/logs/%x_%A_%a.out
+#SBATCH --error=/mnt/scratch/woldring/af3/logs/%x_%A_%a.err
+
+set -euo pipefail
+
+module purge
+# module load Singularity   # uncomment if required on your cluster
+
+# ---------------------------------------------------------------------------
+# Paths  (edit if your layout differs)
+# ---------------------------------------------------------------------------
+export AF3_RESOURCES_DIR=/mnt/research/woldring_lab/AlphaFold3
+export AF3_SCRATCH_DIR=/mnt/scratch/woldring/af3
+
+export AF3_IMAGE="${AF3_RESOURCES_DIR}/image/alphafold3.sif"
+export AF3_CODE_DIR="${AF3_RESOURCES_DIR}/code"
+export AF3_MODEL_PARAMETERS="${AF3_RESOURCES_DIR}/weights"
+export AF3_DATABASES_DIR=/mnt/research/common-data/alphafold/database_3
+
+# Where generate_af3_jsons.py --stage pairs wrote the list and JSONs
+PAIR_JSON_LIST=/mnt/research/woldring_lab/af3/pair_json_list.txt
+PAIR_JSON_DIR=/mnt/research/woldring_lab/af3/pair_jsons
+
+# Where AF3 will write inference outputs
+AF3_OUTPUT_DIR="${AF3_SCRATCH_DIR}/pair_results"
+
+# JAX compilation cache -- avoids recompiling the XLA kernels between jobs
+# (AF3 officially supports --jax_compilation_cache_dir for this purpose)
+AF3_JAX_CACHE="${AF3_SCRATCH_DIR}/jax_cache"
+
+# Structures per complex: seeds are set in the pair JSON; samples per seed
+# can be controlled via --num_diffusion_samples (if your AF3 build supports it)
+AF3_NUM_SAMPLES_PER_SEED="${AF3_NUM_SAMPLES_PER_SEED:-5}"
+AF3_NUM_SEEDS="${AF3_NUM_SEEDS:-20}"
+
+# ---------------------------------------------------------------------------
+# Sanity checks
+# ---------------------------------------------------------------------------
+[[ -f "${PAIR_JSON_LIST}" ]]        || { echo "ERROR: list not found: ${PAIR_JSON_LIST}" >&2; exit 1; }
+[[ -f "${AF3_IMAGE}" ]]             || { echo "ERROR: AF3 image not found: ${AF3_IMAGE}" >&2; exit 1; }
+[[ -d "${AF3_CODE_DIR}" ]]          || { echo "ERROR: AF3 code dir not found: ${AF3_CODE_DIR}" >&2; exit 1; }
+[[ -d "${AF3_MODEL_PARAMETERS}" ]]  || { echo "ERROR: Model parameters not found: ${AF3_MODEL_PARAMETERS}" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Resolve this task's JSON
+# ---------------------------------------------------------------------------
+JSON_PATH="$(sed -n "${SLURM_ARRAY_TASK_ID}p" "${PAIR_JSON_LIST}")"
+[[ -n "${JSON_PATH}" ]] || { echo "ERROR: no line ${SLURM_ARRAY_TASK_ID} in ${PAIR_JSON_LIST}" >&2; exit 1; }
+[[ -f "${JSON_PATH}" ]] || { echo "ERROR: pair JSON not found: ${JSON_PATH}" >&2; exit 1; }
+
+json_name="$(basename "${JSON_PATH}")"
+job_name="${json_name%.json}"          # e.g. "Acarbose_OATP1b1_af3"
+
+echo "==> [task ${SLURM_ARRAY_TASK_ID}] pair=${job_name}"
+echo "==> input JSON: ${JSON_PATH}"
+
+# ---------------------------------------------------------------------------
+# Skip if this pair already has all expected structures
+# ---------------------------------------------------------------------------
+out_host="${AF3_OUTPUT_DIR}/${job_name}"
+expected=$((AF3_NUM_SEEDS * AF3_NUM_SAMPLES_PER_SEED))
+
+have="$(find "${out_host}" -type f -path '*seed-*_sample-*/*_model.cif' -size +0c 2>/dev/null | wc -l | tr -d ' ')"
+have="${have:-0}"
+
+if [[ "${have}" -ge "${expected}" ]]; then
+    echo "==> [task ${SLURM_ARRAY_TASK_ID}] ${job_name} already has ${have}/${expected} sample CIFs -- skipping"
+    exit 0
+fi
+
+mkdir -p "${out_host}" "${AF3_SCRATCH_DIR}/logs" "${AF3_JAX_CACHE}"
+
+AF3_FORCE_OUTPUT_DIR=''
+if [[ "${have}" -gt 0 ]]; then
+    AF3_FORCE_OUTPUT_DIR='--force_output_dir=true'
+fi
+
+# Per-job tmp dir on scratch
+AF3_TMP_HOST="${AF3_SCRATCH_DIR}/tmp/${job_name}_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}"
+mkdir -p "${AF3_TMP_HOST}"
+
+AF3_STDOUT="${out_host}/af3.stdout.log"
+AF3_STDERR="${out_host}/af3.stderr.log"
+: > "${AF3_STDOUT}"
+: > "${AF3_STDERR}"
+
+# ---------------------------------------------------------------------------
+# Check whether this AF3 build supports --num_diffusion_samples
+# ---------------------------------------------------------------------------
+af3_supports_flag() {
+    local flag="$1"
+    singularity exec "${AF3_IMAGE}" /bin/bash -lc \
+        "python3 /root/af_code/alphafold3/run_alphafold.py --helpshort 2>/dev/null | grep -q -- '${flag}'"
+}
+
+diffusion_args=()
+if af3_supports_flag 'num_diffusion_samples'; then
+    diffusion_args+=(--num_diffusion_samples "${AF3_NUM_SAMPLES_PER_SEED}")
+fi
+
+# ---------------------------------------------------------------------------
+# Run AF3 inference (--run_data_pipeline=false)
+# ---------------------------------------------------------------------------
+echo "==> running AF3 inference (skipping data pipeline) for ${job_name}"
+echo "==> expecting ${expected} output structures (${AF3_NUM_SEEDS} seeds × ${AF3_NUM_SAMPLES_PER_SEED} samples)"
+
+set +e
+singularity exec --nv \
+    --bind "${PAIR_JSON_DIR}:/root/af_input" \
+    --bind "${AF3_OUTPUT_DIR}:/root/af_output" \
+    --bind "${AF3_MODEL_PARAMETERS}:/root/models" \
+    --bind "${AF3_DATABASES_DIR}:/root/public_databases" \
+    --bind "${AF3_CODE_DIR}:/root/af_code" \
+    --bind "${AF3_TMP_HOST}:/tmp/local" \
+    --bind "${AF3_JAX_CACHE}:/root/jax_cache" \
+    --env TMPDIR=/tmp/local \
+    "${AF3_IMAGE}" \
+    python3 /root/af_code/alphafold3/run_alphafold.py \
+        --json_path  "/root/af_input/${json_name}" \
+        --model_dir  /root/models \
+        --db_dir     /root/public_databases \
+        --output_dir "/root/af_output/${job_name}" \
+        --run_data_pipeline=false \
+        --jax_compilation_cache_dir /root/jax_cache \
+        "${diffusion_args[@]}" \
+        ${AF3_FORCE_OUTPUT_DIR} \
+    > >(tee -a "${AF3_STDOUT}") \
+    2> >(tee -a "${AF3_STDERR}" >&2)
+status=$?
+set -e
+
+exit "${status}"
