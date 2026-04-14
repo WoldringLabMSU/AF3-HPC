@@ -4,6 +4,7 @@ This repository contains SLURM batch pipelines for running **AlphaFold3 structur
 
 - **Protein-ligand** co-folding (one protein + one small molecule per job)
 - **Protein-protein** co-folding (all-vs-all binder × target matrix)
+- **Protein-protein** co-folding (rowwise pairing binder x target mapping)
 
 ---
 
