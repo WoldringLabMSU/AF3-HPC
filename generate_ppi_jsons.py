@@ -2,8 +2,12 @@
 """
 generate_ppi_jsons.py
 
-Pre-generate all M x N AlphaFold3 JSON input files for protein-protein
-co-folding from a CSV with 'binders' and 'targets' columns.
+Pre-generate AlphaFold3 JSON input files for protein-protein co-folding
+from a CSV with 'binders' and 'targets' columns.
+
+Two modes:
+  Combinatorial (default): every binder is paired with every target (M x N jobs).
+  Paired (--paired):       row i binder is paired only with row i target (N jobs).
 
 Run this script before submitting the SLURM array job.
 
@@ -12,7 +16,8 @@ Usage:
         --csv ppi.csv \\
         --outdir /path/to/af3/inputs \\
         [--template AF3_PPI.json] \\
-        [--num-seeds 20] \\
+        [--num-seeds 1] \\
+        [--paired] \\
         [--skip-existing]
 
 Output:
@@ -57,6 +62,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--outdir", required=True, help="Directory to write JSON files into")
     parser.add_argument("--num-seeds", type=int, default=1, help="Number of model seeds per job (default: 1)")
     parser.add_argument(
+        "--paired",
+        action="store_true",
+        help="Pair row i binder with row i target only (N jobs) instead of all M×N combinations",
+    )
+    parser.add_argument(
         "--skip-existing",
         action="store_true",
         help="Skip writing a JSON if the output file already exists",
@@ -64,8 +74,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_sequences(csv_path: str) -> "tuple[list[str], list[str]]":
-    """Return (binders, targets) lists from the CSV, skipping blank entries."""
+def load_sequences(csv_path: str, paired: bool = False) -> "tuple[list[str], list[str]]":
+    """Return (binders, targets) lists from the CSV.
+
+    paired=False: collect non-blank entries from each column independently.
+    paired=True:  preserve row correspondence; both entries in a row must be
+                  non-blank for the row to be included.
+    """
     with open(csv_path, newline="") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames is None:
@@ -81,15 +96,31 @@ def load_sequences(csv_path: str) -> "tuple[list[str], list[str]]":
         for row in reader:
             b = row["binders"].strip()
             t = row["targets"].strip()
-            if b:
-                binders.append(b)
-            if t:
-                targets.append(t)
+            if paired:
+                if b and t:
+                    binders.append(b)
+                    targets.append(t)
+                elif b or t:
+                    print(
+                        "WARNING: Skipping row with only one non-blank entry in paired mode.",
+                        file=sys.stderr,
+                    )
+            else:
+                if b:
+                    binders.append(b)
+                if t:
+                    targets.append(t)
 
     if not binders:
         sys.exit("ERROR: No binder sequences found in CSV.")
     if not targets:
         sys.exit("ERROR: No target sequences found in CSV.")
+
+    if paired and len(binders) != len(targets):
+        sys.exit(
+            f"ERROR: In paired mode, binder and target counts must match; "
+            f"got {len(binders)} binders and {len(targets)} targets."
+        )
 
     # Warn on duplicates within each column
     if len(set(binders)) < len(binders):
@@ -119,20 +150,18 @@ def load_template(template_path: str) -> dict:
 def main() -> None:
     args = parse_args()
 
-    binders, targets = load_sequences(args.csv)
-    template = load_template(args.template)
-
-    M, N = len(binders), len(targets)
-    total = M * N
+    binders, targets = load_sequences(args.csv, paired=args.paired)
 
     os.makedirs(args.outdir, exist_ok=True)
 
     generated = 0
     skipped = 0
 
-    for i, binder_seq in enumerate(binders):
-        for j, target_seq in enumerate(targets):
-            job_tag = f"binder{i + 1}_target{j + 1}"
+    if args.paired:
+        template = load_template(args.template)
+        total = len(binders)
+        for i, (binder_seq, target_seq) in enumerate(zip(binders, targets)):
+            job_tag = f"binder{i + 1}_target{i + 1}"
             out_path = os.path.join(args.outdir, f"{job_tag}.json")
 
             if args.skip_existing and os.path.isfile(out_path):
@@ -143,8 +172,8 @@ def main() -> None:
             data["name"] = job_tag
 
             protein_entries = [item["protein"] for item in data["sequences"] if "protein" in item]
-            protein_entries[0]["sequence"] = binder_seq   # Chain A = binder
-            protein_entries[1]["sequence"] = target_seq   # Chain B = target
+            protein_entries[0]["sequence"] = binder_seq
+            protein_entries[1]["sequence"] = target_seq
 
             data["modelSeeds"] = generate_seeds(job_tag, args.num_seeds)
 
@@ -153,11 +182,44 @@ def main() -> None:
 
             generated += 1
 
-    print(f"Generated {generated} JSON files ({M} binders x {N} targets).")
-    if skipped:
-        print(f"Skipped {skipped} already-existing files.")
-    print(f"Total combinations: {total}")
-    print(f"\nSet SLURM array to: 1-{total}%10")
+        print(f"Generated {generated} JSON files ({total} paired rows).")
+        if skipped:
+            print(f"Skipped {skipped} already-existing files.")
+        print(f"Total pairs: {total}")
+        print(f"\nSet SLURM array to: 1-{total}%10")
+    else:
+        M, N = len(binders), len(targets)
+        total = M * N
+        template = load_template(args.template)
+
+        for i, binder_seq in enumerate(binders):
+            for j, target_seq in enumerate(targets):
+                job_tag = f"binder{i + 1}_target{j + 1}"
+                out_path = os.path.join(args.outdir, f"{job_tag}.json")
+
+                if args.skip_existing and os.path.isfile(out_path):
+                    skipped += 1
+                    continue
+
+                data = copy.deepcopy(template)
+                data["name"] = job_tag
+
+                protein_entries = [item["protein"] for item in data["sequences"] if "protein" in item]
+                protein_entries[0]["sequence"] = binder_seq   # Chain A = binder
+                protein_entries[1]["sequence"] = target_seq   # Chain B = target
+
+                data["modelSeeds"] = generate_seeds(job_tag, args.num_seeds)
+
+                with open(out_path, "w") as f:
+                    json.dump(data, f, indent=2)
+
+                generated += 1
+
+        print(f"Generated {generated} JSON files ({M} binders x {N} targets).")
+        if skipped:
+            print(f"Skipped {skipped} already-existing files.")
+        print(f"Total combinations: {total}")
+        print(f"\nSet SLURM array to: 1-{total}%10")
 
 
 if __name__ == "__main__":
