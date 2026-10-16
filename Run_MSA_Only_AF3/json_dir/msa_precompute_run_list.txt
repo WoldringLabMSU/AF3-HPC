@@ -1,0 +1,1 @@
+/mnt/gs21/scratch/needsang/AF3-HPC/json_dir/ADK.json

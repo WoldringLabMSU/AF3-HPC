@@ -1,0 +1,2 @@
+input_row_index	input_name	job_name	json_file	json_path	sequence_length	sequence_hash	deduped_to_existing_sequence
+1	ADK	ADK	ADK.json	/mnt/gs21/scratch/needsang/AF3-HPC/json_dir/ADK.json	214	27f14aa198cf	0
